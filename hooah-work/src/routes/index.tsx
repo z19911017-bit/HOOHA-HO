@@ -44,9 +44,11 @@ function Home() {
 
 function Hero() {
   const [i, setI] = useState(0)
+  const [siteCopy,setSiteCopy] = useState<Record<string,string>>({})
   const [uploadedSlides, setUploadedSlides] = useState<{ src: string; alt: string }[] | null>(null)
   const slides = uploadedSlides?.length ? uploadedSlides : heroMedia.slides
   useEffect(() => {
+    fetch('/.netlify/functions/api?resource=site-content-public').then(r=>r.ok?r.json():Promise.reject()).then(d=>setSiteCopy(d.content??{})).catch(()=>undefined)
     fetch('/.netlify/functions/api?resource=media-public&category=hero').then(r => r.ok ? r.json() : Promise.reject()).then(data => {
       if (Array.isArray(data.items) && data.items.length) setUploadedSlides(data.items.map((item: { publicUrl: string; title: string }) => ({ src: item.publicUrl, alt: item.title })))
     }).catch(() => undefined)
@@ -65,14 +67,14 @@ function Hero() {
           </p>
           <h1 className="max-w-3xl">
             <span className="block font-display text-[clamp(4.8rem,11vw,8.5rem)] leading-[0.82] tracking-tight text-foreground uppercase">Hooah<span className="text-primary">!</span></span>
-            <span className="mt-7 block text-[clamp(1.9rem,4vw,3.2rem)] leading-tight font-black tracking-tight">{store.slogan}</span>
+            <span className="mt-7 block text-[clamp(1.9rem,4vw,3.2rem)] leading-tight font-black tracking-tight">{siteCopy.hero_slogan || store.slogan}</span>
           </h1>
-          <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground sm:text-lg">{store.tagline}。小班制團體課線上即時預約，或與專屬教練一起打造你的 12 週減脂計畫。</p>
+          <p className="mt-5 max-w-xl text-base leading-8 text-muted-foreground sm:text-lg">{siteCopy.hero_description || `${store.tagline}。小班制團體課線上即時預約，或與專屬教練一起打造你的 12 週減脂計畫。`}</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button asChild size="lg" className="h-14 px-7 text-base font-bold"><Link to="/schedule">查看課表預約 <ArrowRight /></Link></Button>
-            <Button asChild size="lg" variant="outline" className="h-14 border-foreground/20 px-7 text-base font-bold"><Link to="/consult">預約減重諮詢</Link></Button>
+            <Button asChild size="lg" className="h-14 px-7 text-base font-bold"><Link to="/schedule">{siteCopy.hero_cta_class || '查看課表預約'} <ArrowRight /></Link></Button>
+            <Button asChild size="lg" variant="outline" className="h-14 border-foreground/20 px-7 text-base font-bold"><Link to="/consult">{siteCopy.hero_cta_consult || '預約減重諮詢'}</Link></Button>
           </div>
-          <div className="mt-10 flex items-center gap-3 text-xs font-bold tracking-[0.16em] text-muted-foreground"><span className="h-px w-10 bg-primary"/> TRAIN SMARTER · LIVE STRONGER</div>
+          <div className="mt-10 flex items-center gap-3 text-xs font-bold tracking-[0.16em] text-muted-foreground"><span className="h-px w-10 bg-primary"/> {siteCopy.hero_tagline || 'TRAIN SMARTER · LIVE STRONGER'}</div>
         </div>
         <div className="relative order-1 min-h-[360px] overflow-hidden rounded-2xl bg-muted shadow-[0_25px_80px_-35px_rgba(20,35,30,.35)] lg:order-2 lg:min-h-[560px]">
           {slides.map((slide, idx) => <img key={`${slide.src}-${idx}`} src={slide.src.startsWith('/.netlify/') ? slide.src : cdn(slide.src, 1500)} alt={slide.alt} className={cn('absolute inset-0 size-full object-cover transition-opacity duration-1000', idx === i ? 'opacity-100' : 'opacity-0')} fetchPriority={idx===0?'high':'auto'} />)}
@@ -85,7 +87,9 @@ function Hero() {
 }
 
 function Marquee() {
-  const items = [...classTypes, ...classTypes]
+  const [types,setTypes] = useState(classTypes)
+  useEffect(()=>{fetch('/.netlify/functions/api?resource=public').then(r=>r.ok?r.json():Promise.reject()).then(d=>{if(Array.isArray(d.classTypes))setTypes(d.classTypes)}).catch(()=>undefined)},[])
+  const items = [...types, ...types]
   return (
     <div className="overflow-hidden border-y border-ink bg-primary py-3 text-primary-foreground" aria-hidden="true">
       <div className="animate-marquee flex w-max gap-10 font-display text-2xl whitespace-nowrap uppercase">
@@ -119,6 +123,7 @@ function FeaturedClasses() {
   const [day, setDay] = useState(1)
   const [timetable, setTimetable] = useState<WeeklySlot[]>(weeklyTimetable)
   const [coachList, setCoachList] = useState<Coach[]>(coaches)
+  const [classTypeList, setClassTypeList] = useState(classTypes)
   const [classPhotos, setClassPhotos] = useState<{id:string;title:string;publicUrl:string}[]>([])
   useEffect(() => { fetch('/.netlify/functions/api?resource=media-public&category=classes').then(r=>r.ok?r.json():Promise.reject()).then(d=>{if(Array.isArray(d.items))setClassPhotos(d.items)}).catch(()=>undefined) }, [])
   useEffect(() => { setDay(new Date().getDay()) }, [])
@@ -126,6 +131,7 @@ function FeaturedClasses() {
     fetch('/.netlify/functions/api?resource=public').then(r => r.ok ? r.json() : Promise.reject()).then(data => {
       if (Array.isArray(data.slots)) setTimetable(data.slots)
       if (Array.isArray(data.coaches)) setCoachList(data.coaches)
+      if (Array.isArray(data.classTypes)) setClassTypeList(data.classTypes)
     }).catch(() => undefined)
   }, [])
   const list = timetable.filter((s) => s.weekday === day).sort((a, b) => toMinutes(a.start) - toMinutes(b.start))
@@ -160,7 +166,7 @@ function FeaturedClasses() {
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((s) => {
-            const ct = classTypeById(s.classTypeId)!
+            const ct = classTypeList.find((item) => item.id === s.classTypeId) ?? classTypeById(s.classTypeId)!
             const coach = coachList.find((c) => c.id === s.coachId)
             return (
               <Link

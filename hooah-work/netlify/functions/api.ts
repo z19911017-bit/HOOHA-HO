@@ -182,6 +182,63 @@ export default async (request: Request) => {
       } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
     }
 
+    if (method === 'GET' && resource === 'site-content-public') {
+      const rows = await db.sql`SELECT content_key AS key,content_value AS value FROM site_content ORDER BY content_key`
+      return json({ content: Object.fromEntries(rows.map((row: {key:string;value:string}) => [row.key,row.value])) })
+    }
+
+    if (method === 'GET' && resource === 'site-content-admin') {
+      await requireAdmin()
+      const rows = await db.sql`SELECT content_key AS key,content_value AS value,updated_at AS "updatedAt" FROM site_content ORDER BY content_key`
+      return json({ items: rows })
+    }
+
+    if (method === 'POST' && resource === 'admin-save-content') {
+      await requireAdmin()
+      const body = await readBody(request)
+      const items = Array.isArray(body.items) ? body.items.slice(0,80) : []
+      for (const item of items) {
+        const key = String((item as Record<string,unknown>).key ?? '').trim()
+        const value = String((item as Record<string,unknown>).value ?? '').slice(0,5000)
+        if (!/^[a-z0-9_]{2,80}$/.test(key)) return bad('內容欄位代碼格式錯誤')
+        await db.sql`INSERT INTO site_content(content_key,content_value) VALUES(${key},${value}) ON CONFLICT(content_key) DO UPDATE SET content_value=EXCLUDED.content_value,updated_at=now()`
+      }
+      return json({ ok: true })
+    }
+
+    if (method === 'POST' && resource === 'admin-save-class-type') {
+      await requireAdmin()
+      const body = await readBody(request)
+      const id = String(body.id ?? `class-${crypto.randomUUID()}`).trim()
+      const name = String(body.name ?? '').trim()
+      const en = String(body.en ?? '').trim()
+      const blurb = String(body.blurb ?? '').trim()
+      const intensity = Number(body.intensity ?? 1)
+      const color = String(body.color ?? '#3977a8')
+      if (!/^[a-zA-Z0-9_-]{2,80}$/.test(id) || !name || !Number.isInteger(intensity) || intensity < 1 || intensity > 3 || !/^#[0-9a-fA-F]{6}$/.test(color)) return bad('課程種類資料格式錯誤')
+      await db.sql`INSERT INTO class_types(id,name,en,intensity,color,blurb,active) VALUES(${id},${name},${en},${intensity},${color},${blurb},true) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name,en=EXCLUDED.en,intensity=EXCLUDED.intensity,color=EXCLUDED.color,blurb=EXCLUDED.blurb,active=true`
+      return json({ ok: true, id }, 201)
+    }
+
+    if (method === 'DELETE' && resource === 'admin-delete-class-type') {
+      await requireAdmin()
+      const id = url.searchParams.get('id') ?? ''
+      const used = await db.sql`SELECT COUNT(*)::int AS count FROM weekly_slots WHERE class_type_id=${id} AND active=true`
+      if (Number(used[0]?.count ?? 0) > 0) return bad('此課程種類仍有啟用中的課表，請先停用相關課程', 409)
+      const rows = await db.sql`UPDATE class_types SET active=false WHERE id=${id} AND active=true RETURNING id`
+      if (!rows.length) return bad('找不到課程種類',404)
+      return json({ ok: true })
+    }
+
+    if (method === 'DELETE' && resource === 'admin-delete-coach') {
+      await requireAdmin()
+      const id = url.searchParams.get('id') ?? ''
+      const rows = await db.sql`UPDATE coaches SET active=false,updated_at=now() WHERE id=${id} AND active=true RETURNING id`
+      if (!rows.length) return bad('找不到教練',404)
+      await db.sql`UPDATE weekly_slots SET active=false,updated_at=now() WHERE coach_id=${id} AND active=true`
+      return json({ ok: true })
+    }
+
     if (method === 'GET' && resource === 'admin-bootstrap') {
       const user = await requireStaff()
       const isAdmin = user.roles?.includes('admin') ?? false

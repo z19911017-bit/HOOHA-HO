@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import { Copy, Download, GripVertical, Plus, UserPlus, LogOut } from 'lucide-react'
+import { Copy, Download, GripVertical, Plus, UserPlus, LogOut, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Field } from '@/components/site/field'
-import { classTypeById, classTypes, coaches as seedCoaches, rooms, weeklyTimetable, type Coach, type WeeklySlot } from '@/data/fixtures'
+import { classTypeById as fixtureClassTypeById, classTypes, coaches as seedCoaches, rooms, weeklyTimetable, type Coach, type WeeklySlot } from '@/data/fixtures'
 import { endTime, fromMinutes, toMinutes, weekdayLabels } from '@/lib/schedule'
 import { cdn } from '@/lib/img'
 import { cn } from '@/lib/utils'
@@ -35,6 +35,8 @@ function AdminPage() {
   const navigate = useNavigate()
   const [slots, setSlots] = useState<WeeklySlot[]>(weeklyTimetable)
   const [coachList, setCoachList] = useState<Coach[]>(seedCoaches)
+  const [classTypeList, setClassTypeList] = useState(classTypes)
+  const getClassType = (id: string) => classTypeList.find((item) => item.id === id) ?? fixtureClassTypeById(id)
   const [role, setRole] = useState<'admin' | 'coach' | null>(null)
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState('')
@@ -43,7 +45,7 @@ function AdminPage() {
     let active = true
     fetch('/.netlify/functions/api?resource=admin-bootstrap', { credentials: 'include' })
       .then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error || '請先登入'); return data })
-      .then((data) => { if (!active) return; setSlots(data.slots ?? []); setCoachList(data.coaches ?? []); setRole(data.user.role) })
+      .then((data) => { if (!active) return; setSlots(data.slots ?? []); setCoachList(data.coaches ?? []); setClassTypeList(data.classTypes ?? classTypes); setRole(data.user.role) })
       .catch((error) => { if (!active) return; setAuthError(error instanceof Error ? error.message : '無法驗證登入'); navigate({ to: '/login' }) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -53,7 +55,7 @@ function AdminPage() {
   const [dragId, setDragId] = useState<string | null>(null)
 
   const openNew = (weekday: number, start: string) =>
-    setDraft({ weekday, start, classTypeId: classTypes[0].id, coachId: coachList[0].id, durationMin: 50, capacity: 12, room: rooms[0], copyTo: [] })
+    setDraft({ weekday, start, classTypeId: classTypeList[0]?.id ?? classTypes[0].id, coachId: coachList[0].id, durationMin: 50, capacity: 12, room: rooms[0], copyTo: [] })
 
   const onColumnClick = (e: React.MouseEvent<HTMLDivElement>, weekday: number) => {
     if (e.target !== e.currentTarget) return
@@ -103,7 +105,7 @@ function AdminPage() {
   const editSlot = (slot: WeeklySlot) => { setRosterOf(null); setDraft({ ...slot, copyTo: [] }) }
 
   const deleteSlot = async (slot: WeeklySlot) => {
-    if (!window.confirm(`確定停用「${classTypeById(slot.classTypeId)?.name ?? '課程'}」每週課程？既有預約紀錄會保留。`)) return
+    if (!window.confirm(`確定停用「${getClassType(slot.classTypeId)?.name ?? '課程'}」每週課程？既有預約紀錄會保留。`)) return
     try {
       const response = await fetch(`/.netlify/functions/api?resource=admin-delete-slot&id=${encodeURIComponent(slot.id)}`, { method: 'DELETE', credentials: 'include' })
       const data = await response.json(); if (!response.ok) throw new Error(data.error || '停用失敗')
@@ -143,6 +145,8 @@ function AdminPage() {
             <TabsTrigger value="coaches">教練管理</TabsTrigger>
             <TabsTrigger value="consultations">諮詢預約</TabsTrigger>
             {role === 'admin' && <TabsTrigger value="media">圖片管理</TabsTrigger>}
+            {role === 'admin' && <TabsTrigger value="site-content">網站文字</TabsTrigger>}
+            {role === 'admin' && <TabsTrigger value="class-types">課程種類</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="calendar" className="mt-6">
@@ -178,7 +182,7 @@ function AdminPage() {
                     {slots
                       .filter((s) => s.weekday === d)
                       .map((s) => {
-                        const ct = classTypeById(s.classTypeId)!
+                        const ct = getClassType(s.classTypeId)!
                         const coach = coachList.find((c) => c.id === s.coachId)
                         return (
                           <button
@@ -221,7 +225,7 @@ function AdminPage() {
                     .map((s) => (
                       <TableRow key={s.id}>
                         <TableCell className="font-bold">週{weekdayLabels[s.weekday]} {s.start}</TableCell>
-                        <TableCell>{classTypeById(s.classTypeId)?.name}</TableCell>
+                        <TableCell>{getClassType(s.classTypeId)?.name}</TableCell>
                         <TableCell>{coachList.find((c) => c.id === s.coachId)?.name}</TableCell>
                         <TableCell>{s.room}</TableCell>
                         <TableCell className="text-right">{s.capacity} 人</TableCell>
@@ -234,7 +238,7 @@ function AdminPage() {
           </TabsContent>
 
           <TabsContent value="coaches" className="mt-6">
-            {role === 'admin' ? <CoachManager coaches={coachList} onAdd={(c) => setCoachList((l) => [...l, c])} /> : <div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground">教練帳號僅能查看自己的課程，不開放教練資料管理。</div>}
+            {role === 'admin' ? <CoachManager coaches={coachList} onAdd={(c) => setCoachList((l) => l.some((x) => x.id === c.id) ? l.map((x) => x.id === c.id ? c : x) : [...l, c])} /> : <div className="rounded-lg border bg-card p-5 text-sm text-muted-foreground">教練帳號僅能查看自己的課程，不開放教練資料管理。</div>}
           </TabsContent>
 
           <TabsContent value="consultations" className="mt-6">
@@ -242,11 +246,13 @@ function AdminPage() {
           </TabsContent>
 
           {role === 'admin' && <TabsContent value="media" className="mt-6"><MediaManager /></TabsContent>}
+          {role === 'admin' && <TabsContent value="site-content" className="mt-6"><SiteContentManager /></TabsContent>}
+          {role === 'admin' && <TabsContent value="class-types" className="mt-6"><ClassTypeManager /></TabsContent>}
         </Tabs>
       </div>
 
-      <SlotDialog draft={draft} coaches={coachList} onChange={setDraft} onSave={saveDraft} />
-      <RosterSheet slot={rosterOf} coaches={coachList} onClose={() => setRosterOf(null)} onDuplicate={duplicate} onEdit={editSlot} onDelete={deleteSlot} canEdit={role === 'admin'} />
+      <SlotDialog draft={draft} coaches={coachList} classTypes={classTypeList} onChange={setDraft} onSave={saveDraft} />
+      <RosterSheet slot={rosterOf} coaches={coachList} classTypes={classTypeList} onClose={() => setRosterOf(null)} onDuplicate={duplicate} onEdit={editSlot} onDelete={deleteSlot} canEdit={role === 'admin'} />
     </div>
   )
 }
@@ -282,7 +288,7 @@ function Stat({ label, value }: { label: string; value: number }) {
   )
 }
 
-function SlotDialog({ draft, coaches, onChange, onSave }: { draft: Draft | null; coaches: Coach[]; onChange: (d: Draft | null) => void; onSave: () => void }) {
+function SlotDialog({ draft, coaches, classTypes: availableClassTypes, onChange, onSave }: { draft: Draft | null; coaches: Coach[]; classTypes: typeof classTypes; onChange: (d: Draft | null) => void; onSave: () => void }) {
   if (!draft) return null
   const set = (p: Partial<Draft>) => onChange({ ...draft, ...p })
   return (
@@ -295,7 +301,7 @@ function SlotDialog({ draft, coaches, onChange, onSave }: { draft: Draft | null;
         <div className="grid gap-4 sm:grid-cols-2">
           <Field id="s-type" label="課程名稱">
             <select id="s-type" className={selectCls} value={draft.classTypeId} onChange={(e) => set({ classTypeId: e.target.value })}>
-              {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {availableClassTypes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
           <Field id="s-coach" label="負責教練">
@@ -345,7 +351,7 @@ function SlotDialog({ draft, coaches, onChange, onSave }: { draft: Draft | null;
   )
 }
 
-function RosterSheet({ slot, coaches, onClose, onDuplicate, onEdit, onDelete, canEdit }: { slot: WeeklySlot | null; coaches: Coach[]; onClose: () => void; onDuplicate: (s: WeeklySlot) => void; onEdit: (s: WeeklySlot) => void; onDelete: (s: WeeklySlot) => void; canEdit: boolean }) {
+function RosterSheet({ slot, coaches, classTypes: availableClassTypes, onClose, onDuplicate, onEdit, onDelete, canEdit }: { slot: WeeklySlot | null; coaches: Coach[]; classTypes: typeof classTypes; onClose: () => void; onDuplicate: (s: WeeklySlot) => void; onEdit: (s: WeeklySlot) => void; onDelete: (s: WeeklySlot) => void; canEdit: boolean }) {
   const [roster, setRoster] = useState<Array<{ bookingId: string; name: string; phone: string; email: string; checkedIn: boolean; status: string }>>([])
   const [loading, setLoading] = useState(false)
   const date = useMemo(() => {
@@ -366,7 +372,7 @@ function RosterSheet({ slot, coaches, onClose, onDuplicate, onEdit, onDelete, ca
     return () => { active = false }
   }, [slot, date])
   if (!slot) return null
-  const ct = classTypeById(slot.classTypeId)!
+  const ct = availableClassTypes.find((item) => item.id === slot.classTypeId) ?? fixtureClassTypeById(slot.classTypeId)!
   const exportCsv = () => {
     const rows = [['姓名', '電話', 'Email', '簽到', '狀態'], ...roster.map(r => [r.name,r.phone,r.email,r.checkedIn ? '已簽到' : '未簽到',r.status])]
     const csv = '\uFEFF' + rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
@@ -400,7 +406,7 @@ function RosterSheet({ slot, coaches, onClose, onDuplicate, onEdit, onDelete, ca
 }
 
 function CoachManager({ coaches, onAdd }: { coaches: Coach[]; onAdd: (c: Coach) => void }) {
-  const empty = { name: '', title: '', specialties: '', certifications: '', bio: '', lineUrl: '' }
+  const empty = { id: '', name: '', title: '', specialties: '', certifications: '', bio: '', lineUrl: '' }
   const [f, setF] = useState(empty)
   const valid = f.name.trim() && f.title.trim()
   const add = async (e: React.FormEvent) => {
@@ -408,7 +414,7 @@ function CoachManager({ coaches, onAdd }: { coaches: Coach[]; onAdd: (c: Coach) 
     if (!valid) return
     const split = (s: string) => s.split(/[,，、\n]/).map((x) => x.trim()).filter(Boolean)
     const newCoach = {
-      id: `coach-${Date.now()}`,
+      id: f.id || `coach-${Date.now()}`,
       name: f.name,
       title: f.title,
       avatar: '/img/coaching.png',
@@ -438,12 +444,16 @@ function CoachManager({ coaches, onAdd }: { coaches: Coach[]; onAdd: (c: Coach) 
               <p className="text-xs text-primary">{c.title}</p>
               <p className="mt-1 truncate text-xs text-muted-foreground">{c.specialties.join('・') || '—'}</p>
               <p className="truncate text-xs text-muted-foreground">LINE：{c.lineUrl || '未設定'}</p>
+              <Button type="button" variant="outline" size="xs" className="mt-2 mr-2" onClick={()=>setF({id:c.id,name:c.name,title:c.title,specialties:c.specialties.join('、'),certifications:c.certifications.join('、'),bio:c.bio,lineUrl:c.lineUrl})}>編輯教練</Button>
+              <Button type="button" variant="destructive" size="xs" className="mt-2" onClick={async()=>{ if(!window.confirm(`確定停用教練「${c.name}」？既有預約紀錄會保留。`)) return; try { const r=await fetch(`/.netlify/functions/api?resource=admin-delete-coach&id=${encodeURIComponent(c.id)}`,{method:'DELETE',credentials:'include'}); const d=await r.json(); if(!r.ok) throw new Error(d.error||'刪除失敗'); toast.success('已停用教練，相關週期課程也已停用'); window.location.reload() } catch(e){ toast.error(e instanceof Error?e.message:'刪除教練失敗') } }}>
+                <Trash2 className="mr-1 size-3"/>刪除教練
+              </Button>
             </div>
           </div>
         ))}
       </div>
       <form onSubmit={add} className="space-y-3 rounded-lg border bg-card p-5">
-        <p className="flex items-center gap-2 font-black"><UserPlus className="size-4" /> 新增教練</p>
+        <p className="flex items-center gap-2 font-black"><UserPlus className="size-4" /> {f.id ? '修改教練資料' : '新增教練'}</p>
         <Field id="k-name" label="姓名"><Input id="k-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field id="k-title" label="職稱"><Input id="k-title" placeholder="例：體態雕塑教練" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></Field>
         <Field id="k-spec" label="擅長領域（以逗號分隔）"><Input id="k-spec" placeholder="增肌減脂, 產後修復" value={f.specialties} onChange={(e) => setF({ ...f, specialties: e.target.value })} /></Field>
@@ -451,8 +461,31 @@ function CoachManager({ coaches, onAdd }: { coaches: Coach[]; onAdd: (c: Coach) 
         <Field id="k-line" label="個人 LINE 連結"><Input id="k-line" type="url" placeholder="https://line.me/ti/p/..." value={f.lineUrl} onChange={(e) => setF({ ...f, lineUrl: e.target.value })} /></Field>
         <Field id="k-bio" label="個人背景"><Textarea id="k-bio" rows={3} value={f.bio} onChange={(e) => setF({ ...f, bio: e.target.value })} /></Field>
         <p className="text-xs text-muted-foreground">大頭照與形象照上傳將於媒體管理階段開放。</p>
-        <Button type="submit" className="w-full" disabled={!valid}>新增教練</Button>
+        <div className="flex gap-2"><Button type="submit" className="flex-1" disabled={!valid}>{f.id ? '儲存修改' : '新增教練'}</Button>{f.id && <Button type="button" variant="outline" onClick={()=>setF(empty)}>取消</Button>}</div>
       </form>
     </div>
   )
+}
+
+
+function SiteContentManager() {
+  const [items,setItems] = useState<Array<{key:string;value:string}>>([])
+  const [loading,setLoading] = useState(true)
+  const [saving,setSaving] = useState(false)
+  useEffect(()=>{ fetch('/.netlify/functions/api?resource=site-content-admin',{credentials:'include'}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||'讀取失敗');setItems(d.items??[])}).catch(e=>toast.error(e instanceof Error?e.message:'讀取網站文字失敗')).finally(()=>setLoading(false)) },[])
+  const update=(key:string,value:string)=>setItems(all=>all.map(x=>x.key===key?{...x,value}:x))
+  const save=async()=>{setSaving(true);try{const r=await fetch('/.netlify/functions/api?resource=admin-save-content',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});const d=await r.json();if(!r.ok)throw new Error(d.error||'儲存失敗');toast.success('網站文字已儲存，前台重新整理後會更新')}catch(e){toast.error(e instanceof Error?e.message:'儲存失敗')}finally{setSaving(false)}}
+  const labels:Record<string,string>={hero_slogan:'首頁主標題',hero_tagline:'首頁副標題',hero_description:'首頁介紹文字',hero_cta_class:'課表按鈕文字',hero_cta_consult:'諮詢按鈕文字'}
+  return <section className="space-y-4 rounded-xl border bg-white p-5"><div><h2 className="text-xl font-bold">網站文字管理</h2><p className="mt-1 text-sm text-muted-foreground">修改首頁主視覺文字，儲存後前台會讀取最新內容。</p></div>{loading?<p>讀取中…</p>:<div className="space-y-4">{items.map(item=><Field key={item.key} id={`content-${item.key}`} label={labels[item.key]??item.key}>{item.value.length>100?<Textarea id={`content-${item.key}`} rows={4} value={item.value} onChange={e=>update(item.key,e.target.value)}/>:<Input id={`content-${item.key}`} value={item.value} onChange={e=>update(item.key,e.target.value)}/>}</Field>)}<Button onClick={()=>void save()} disabled={saving}>{saving?'儲存中…':'儲存網站文字'}</Button></div>}</section>
+}
+
+function ClassTypeManager() {
+  const [items,setItems]=useState<Array<{id:string;name:string;en:string;intensity:number;color:string;blurb:string}>>([])
+  const [form,setForm]=useState({id:'',name:'',en:'',intensity:1,color:'#3977a8',blurb:''})
+  const [loading,setLoading]=useState(true)
+  const load=()=>fetch('/.netlify/functions/api?resource=public').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||'讀取失敗');setItems(d.classTypes??[])}).catch(e=>toast.error(e instanceof Error?e.message:'讀取課程種類失敗')).finally(()=>setLoading(false))
+  useEffect(()=>{void load()},[])
+  const save=async(e:React.FormEvent)=>{e.preventDefault();try{const payload={...form,id:form.id.trim()||`class-${Date.now()}`};const r=await fetch('/.netlify/functions/api?resource=admin-save-class-type',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d.error||'儲存失敗');toast.success('課程種類已儲存');setForm({id:'',name:'',en:'',intensity:1,color:'#3977a8',blurb:''});await load()}catch(e){toast.error(e instanceof Error?e.message:'儲存課程種類失敗')}}
+  const remove=async(id:string)=>{if(!window.confirm('確定停用這個課程種類？仍有啟用課表時會阻止刪除。'))return;try{const r=await fetch(`/.netlify/functions/api?resource=admin-delete-class-type&id=${encodeURIComponent(id)}`,{method:'DELETE',credentials:'include'});const d=await r.json();if(!r.ok)throw new Error(d.error||'刪除失敗');toast.success('課程種類已停用');await load()}catch(e){toast.error(e instanceof Error?e.message:'刪除失敗')}}
+  return <div className="grid gap-5 lg:grid-cols-[1fr_360px]"><section className="rounded-xl border bg-white p-5"><h2 className="text-xl font-bold">課程種類</h2><p className="mt-1 text-sm text-muted-foreground">新增、修改或停用課程類別。每週課表請在「排課行事曆」管理。</p>{loading?<p className="py-5">讀取中…</p>:<div className="mt-4 space-y-3">{items.map(c=><div key={c.id} className="flex items-center justify-between gap-3 rounded-lg border p-3"><div className="min-w-0"><p className="font-bold">{c.name} <span className="text-xs text-muted-foreground">{c.en}</span></p><p className="truncate text-xs text-muted-foreground">{c.blurb}</p></div><div className="flex gap-2"><Button size="xs" variant="outline" onClick={()=>setForm({...c})}>編輯</Button><Button size="xs" variant="destructive" onClick={()=>void remove(c.id)}><Trash2 className="size-3"/></Button></div></div>)}</div>}</section><form onSubmit={save} className="space-y-3 rounded-xl border bg-white p-5"><h3 className="font-bold">新增／修改課程種類</h3><Field id="ct-id" label="識別代碼（新增可留空）"><Input id="ct-id" value={form.id} onChange={e=>setForm({...form,id:e.target.value})} placeholder="例如：yoga"/></Field><Field id="ct-name" label="課程名稱"><Input id="ct-name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required/></Field><Field id="ct-en" label="英文名稱"><Input id="ct-en" value={form.en} onChange={e=>setForm({...form,en:e.target.value})}/></Field><Field id="ct-blurb" label="課程介紹"><Textarea id="ct-blurb" value={form.blurb} onChange={e=>setForm({...form,blurb:e.target.value})}/></Field><Field id="ct-intensity" label="強度（1–3）"><Input id="ct-intensity" type="number" min={1} max={3} value={form.intensity} onChange={e=>setForm({...form,intensity:Number(e.target.value)})}/></Field><Field id="ct-color" label="顯示顏色"><Input id="ct-color" type="color" value={form.color} onChange={e=>setForm({...form,color:e.target.value})}/></Field><Button type="submit" className="w-full">儲存課程種類</Button></form></div>
 }

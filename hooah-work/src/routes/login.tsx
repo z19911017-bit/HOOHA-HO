@@ -30,8 +30,11 @@ function LoginPage() {
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || '登入失敗，請確認帳號密碼')
       const roles = data.user?.roles ?? []
-      if (!roles.includes('admin') && !roles.includes('coach')) throw new Error('此帳號尚未設定管理員或教練權限，請聯絡系統管理員。')
-      toast.success('登入成功')
+      if (!roles.includes('admin') && !roles.includes('coach')) throw new Error('帳號密碼正確，但此帳號尚未設定 Netlify Identity admin／coach 權限。請在 Identity 使用者的 App metadata 設定 roles。')
+      const access = await fetch('/.netlify/functions/api?resource=admin-bootstrap', { credentials: 'include' })
+      const accessData = await access.json().catch(() => ({}))
+      if (!access.ok) throw new Error(accessData.error || '登入成功，但後台權限驗證未通過。請確認 Netlify Database migrations 已完成。')
+      toast.success('登入成功，正在進入後台')
       await navigate({ to: '/admin' })
     } catch (e) {
       setError(e instanceof Error ? e.message : '登入失敗')

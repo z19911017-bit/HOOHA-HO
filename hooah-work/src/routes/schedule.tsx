@@ -38,6 +38,7 @@ function SchedulePage() {
   const [selected, setSelected] = useState<Session | null>(null)
   const [databaseSessions, setDatabaseSessions] = useState<Session[] | null>(null)
   const [coachList, setCoachList] = useState<Coach[]>(seedCoaches)
+  const [classTypeList, setClassTypeList] = useState(classTypes)
   const [databaseError, setDatabaseError] = useState(false)
 
   useEffect(() => {
@@ -48,7 +49,7 @@ function SchedulePage() {
 
   const weekStart = useMemo(() => (now ? startOfWeek(now, weekOffset) : null), [now, weekOffset])
   useEffect(() => {
-    fetch('/.netlify/functions/api?resource=public').then(r => r.ok ? r.json() : Promise.reject()).then(data => { if (Array.isArray(data.coaches)) setCoachList(data.coaches) }).catch(() => undefined)
+    fetch('/.netlify/functions/api?resource=public').then(r => r.ok ? r.json() : Promise.reject()).then(data => { if (Array.isArray(data.coaches)) setCoachList(data.coaches); if (Array.isArray(data.classTypes)) setClassTypeList(data.classTypes) }).catch(() => undefined)
   }, [])
 
   useEffect(() => {
@@ -91,7 +92,7 @@ function SchedulePage() {
           <div className="mt-8 grid gap-3 md:grid-cols-[1fr_auto]">
             <div className="flex flex-wrap gap-2" role="group" aria-label="依課程類型篩選">
               <FilterChip active={type === 'all'} onClick={() => setType('all')}>全部課程</FilterChip>
-              {classTypes.map((c) => (
+              {classTypeList.map((c) => (
                 <FilterChip key={c.id} active={type === c.id} onClick={() => setType(c.id)} color={c.color}>
                   {c.name}
                 </FilterChip>
@@ -156,7 +157,7 @@ function SchedulePage() {
                     </div>
                     <div className="flex flex-col gap-2">
                       {list.map((s) => (
-                        <SessionCard key={s.key} s={s} coaches={coachList} past={isPast(s)} mine={mine.includes(s.key)} onClick={() => setSelected(s)} />
+                        <SessionCard key={s.key} s={s} coaches={coachList} classTypes={classTypeList} past={isPast(s)} mine={mine.includes(s.key)} onClick={() => setSelected(s)} />
                       ))}
                       {list.length === 0 && <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">無符合的課程</p>}
                     </div>
@@ -171,6 +172,7 @@ function SchedulePage() {
       <BookingDialog
         session={selected}
         coaches={coachList}
+        classTypes={classTypeList}
         onClose={() => setSelected(null)}
         onBooked={(s) => {
           setExtraBooked((m) => ({ ...m, [s.key]: (m[s.key] ?? 0) + 1 }))
@@ -194,8 +196,8 @@ function FilterChip({ active, onClick, color, children }: { active: boolean; onC
   )
 }
 
-function SessionCard({ s, coaches, past, mine, onClick }: { s: Session; coaches: Coach[]; past: boolean; mine: boolean; onClick: () => void }) {
-  const ct = classTypeById(s.classTypeId)!
+function SessionCard({ s, coaches, classTypes: availableClassTypes, past, mine, onClick }: { s: Session; coaches: Coach[]; classTypes: typeof classTypes; past: boolean; mine: boolean; onClick: () => void }) {
+  const ct = availableClassTypes.find((item) => item.id === s.classTypeId) ?? classTypeById(s.classTypeId)!
   const coach = coaches.find(c => c.id === s.coachId)
   const status = availabilityOf(s.booked, s.capacity)
   const disabled = past
@@ -223,7 +225,7 @@ function SessionCard({ s, coaches, past, mine, onClick }: { s: Session; coaches:
   )
 }
 
-function BookingDialog({ session, coaches, onClose, onBooked }: { session: Session | null; coaches: Coach[]; onClose: () => void; onBooked: (s: Session) => void }) {
+function BookingDialog({ session, coaches, classTypes: availableClassTypes, onClose, onBooked }: { session: Session | null; coaches: Coach[]; classTypes: typeof classTypes; onClose: () => void; onBooked: (s: Session) => void }) {
   const [form, setForm] = useState({ name: '', phone: '', email: '', lineNotify: true })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [pending, setPending] = useState(false)
@@ -237,7 +239,7 @@ function BookingDialog({ session, coaches, onClose, onBooked }: { session: Sessi
   }, [session])
 
   if (!session) return null
-  const ct = classTypeById(session.classTypeId)!
+  const ct = availableClassTypes.find((item) => item.id === session.classTypeId) ?? classTypeById(session.classTypeId)!
   const coach = coaches.find(c => c.id === session.coachId)
   const full = session.booked >= session.capacity
 

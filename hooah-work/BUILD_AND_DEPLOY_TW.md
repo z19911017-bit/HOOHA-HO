@@ -44,13 +44,13 @@ Netlify Build settings：
 
 - 在 Netlify 專案的 Data & Storage → Database 建立資料庫。
 - 專案 migration 位於 `netlify/database/migrations/`。
-- Netlify Database 會在部署流程套用 migrations。部署後確認資料表與初始課程、教練資料已建立。
+- Netlify Database 會在部署流程套用 migrations。部署後確認資料表與初始課程、教練資料已建立；目前 migration 包含 001、002、003（網站首頁文字管理）。
 
 ### Identity
 
 - 啟用 Identity。
 - Registration preference 設為 Invite only。
-- 建立／邀請管理員，並在該使用者的 App metadata 設定 `roles: ["admin"]`。
+- 建立／邀請管理員，並在該使用者的 App metadata 設定 `roles: ["admin"]`。登入頁會在導向後台前呼叫 `admin-bootstrap` 驗證權限；若登入成功但無法進入，請確認 Identity 使用者有 admin role，且 Database migrations 已套用。
 - 教練帳號設定 `roles: ["coach"]`，並依 `docs/DEPLOY_SETUP_TW.md` 綁定教練資料。
 - 不要把正式密碼、資料庫連線字串或 Netlify token 寫進程式碼或傳到聊天。
 
@@ -70,6 +70,9 @@ Netlify Build settings：
 - [ ] 團體課預約可建立、額滿會進候補
 - [ ] 諮詢預約可建立且不能重疊
 - [ ] 圖片可上傳、前台顯示、排序及刪除
+- [ ] 首頁文字可從後台修改並反映於前台
+- [ ] 課程種類可新增、修改、停用；每週課程可新增、修改、停用
+- [ ] 教練資料可新增、修改、停用；停用時其週期課表同步停用
 - [ ] 手機與桌面版版面正常
 
 **注意：** 在 Netlify 專案尚未連接、資料庫尚未建立、Identity 尚未啟用之前，不能宣稱網站已完成正式上線。部署後也必須以實際帳號完成以上驗收。

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Award, CalendarCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LineIcon } from '@/components/site/line-icon'
-import { coaches as seedCoaches, weeklyTimetable as seedTimetable, classTypeById, type Coach, type WeeklySlot } from '@/data/fixtures'
+import { coaches as seedCoaches, weeklyTimetable as seedTimetable, classTypeById, classTypes as seedClassTypes, type Coach, type WeeklySlot } from '@/data/fixtures'
 import { weekdayLabels } from '@/lib/schedule'
 import { cdn } from '@/lib/img'
 import { cn } from '@/lib/utils'
@@ -16,10 +16,12 @@ export const Route = createFileRoute('/coaches')({
 function CoachesPage() {
   const [coaches, setCoaches] = useState<Coach[]>(seedCoaches)
   const [timetable, setTimetable] = useState<WeeklySlot[]>(seedTimetable)
+  const [classTypes, setClassTypes] = useState(seedClassTypes)
   useEffect(() => {
     fetch('/.netlify/functions/api?resource=public').then(r => r.ok ? r.json() : Promise.reject()).then(data => {
       if (Array.isArray(data.coaches)) setCoaches(data.coaches)
       if (Array.isArray(data.slots)) setTimetable(data.slots)
+      if (Array.isArray(data.classTypes)) setClassTypes(data.classTypes)
     }).catch(() => undefined)
   }, [])
   return (
@@ -42,7 +44,7 @@ function CoachesPage() {
       <div className="mx-auto max-w-content space-y-20 px-4 py-16 sm:px-6 sm:py-24">
         {coaches.map((c, idx) => {
           const classes = timetable.filter((s) => s.coachId === c.id)
-          const types = [...new Set(classes.map((s) => s.classTypeId))].map((id) => classTypeById(id)!)
+          const types = [...new Set(classes.map((s) => s.classTypeId))].map((id) => classTypes.find((item) => item.id === id) ?? classTypeById(id)!)
           return (
             <article key={c.id} id={c.id} className={cn('grid scroll-mt-24 items-start gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14', idx % 2 === 1 && 'lg:[&>*:first-child]:order-2')}>
               <div className="relative">
